@@ -7,7 +7,10 @@ interface Props {
   tripId: string;
   trip: Trip;
   defaultDate: string | null;
+  /** Pass an existing activity to open the modal in edit mode */
+  editActivity?: Activity | null;
   onClose: () => void;
+  /** Called for both new saves and edits */
   onSave: (activity: Activity) => void;
 }
 
@@ -36,48 +39,98 @@ function fmtDayOption(iso: string, idx: number): string {
   return `Day ${idx + 1} — ${label}`;
 }
 
+/** True if a string looks like a URL (http/https/data) */
+function looksLikeUrl(s: string): boolean {
+  return s.startsWith("http://") || s.startsWith("https://") || s.startsWith("data:");
+}
+
 export default function AddActivityModal({
   tripId,
   trip,
   defaultDate,
+  editActivity = null,
   onClose,
   onSave,
 }: Props) {
+  const isEdit = editActivity != null;
   const days = eachDay(trip.startDate, trip.endDate);
-  const initDate = defaultDate && days.includes(defaultDate) ? defaultDate : days[0];
+  const initDate =
+    (editActivity?.date ?? (defaultDate && days.includes(defaultDate) ? defaultDate : null)) ??
+    days[0];
 
   const [date, setDate] = useState(initDate);
-  const [title, setTitle] = useState("");
-  const [time, setTime] = useState("");
-  const [cost, setCost] = useState("");
-  const [notes, setNotes] = useState("");
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [title, setTitle] = useState(editActivity?.title ?? "");
+  const [time, setTime] = useState(editActivity?.time ?? "");
+  const [cost, setCost] = useState(editActivity?.cost != null ? String(editActivity.cost) : "");
+  const [notes, setNotes] = useState(editActivity?.notes ?? "");
+
+  // Image: either a data-URI from file upload or a URL string
+  const [imagePreview, setImagePreview] = useState<string | null>(editActivity?.image ?? null);
+  // Track which tab is active: "upload" | "url"
+  const [imageTab, setImageTab] = useState<"upload" | "url">(
+    editActivity?.image && !editActivity.image.startsWith("data:") ? "url" : "upload"
+  );
+  const [imageUrl, setImageUrl] = useState(
+    editActivity?.image && !editActivity.image.startsWith("data:") ? editActivity.image : ""
+  );
+
   const fileRef = useRef<HTMLInputElement>(null);
 
-  function handleImage(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    // Guard: only accept images
     if (!file.type.startsWith("image/")) return;
     const reader = new FileReader();
-    reader.onload = (ev) => setImagePreview(ev.target?.result as string);
+    reader.onload = (ev) => {
+      setImagePreview(ev.target?.result as string);
+      setImageUrl("");
+    };
     reader.readAsDataURL(file);
+  }
+
+  function handleUrlBlur() {
+    const trimmed = imageUrl.trim();
+    if (trimmed && looksLikeUrl(trimmed)) {
+      setImagePreview(trimmed);
+    } else if (!trimmed) {
+      setImagePreview(null);
+    }
+  }
+
+  function handleUrlChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const val = e.target.value;
+    setImageUrl(val);
+    if (!val.trim()) setImagePreview(null);
+  }
+
+  function clearImage() {
+    setImagePreview(null);
+    setImageUrl("");
+    if (fileRef.current) fileRef.current.value = "";
   }
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!title.trim()) return;
 
+    // Resolve final image: prefer explicit preview (data URI or validated URL)
+    const finalImage =
+      imageTab === "url"
+        ? imageUrl.trim() && looksLikeUrl(imageUrl.trim())
+          ? imageUrl.trim()
+          : undefined
+        : imagePreview ?? undefined;
+
     const activity: Activity = {
-      id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      id: editActivity?.id ?? `act-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       tripId,
       date,
       time,
       title: title.trim(),
       notes: notes.trim() || undefined,
       cost: cost ? parseFloat(cost) : undefined,
-      image: imagePreview ?? undefined,
-      createdAt: new Date().toISOString(),
+      image: finalImage,
+      createdAt: editActivity?.createdAt ?? new Date().toISOString(),
     };
     onSave(activity);
   }
@@ -102,7 +155,9 @@ export default function AddActivityModal({
 
         <div className="px-5 pb-2">
           <div className="flex items-center justify-between mb-5">
-            <h2 className="text-lg font-bold text-gray-900">Add Activity</h2>
+            <h2 className="text-lg font-bold text-gray-900">
+              {isEdit ? "Edit Activity" : "Add Activity"}
+            </h2>
             <button
               onClick={onClose}
               className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition"
@@ -191,57 +246,118 @@ export default function AddActivityModal({
               />
             </div>
 
-            {/* Image upload */}
+            {/* Photo — tabs for Upload vs URL */}
             <div>
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-widest block mb-1.5">
                 Photo
               </label>
-              {imagePreview ? (
-                <div className="relative rounded-2xl overflow-hidden">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={imagePreview} alt="preview" className="w-full object-cover max-h-48" />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setImagePreview(null);
-                      if (fileRef.current) fileRef.current.value = "";
-                    }}
-                    className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center text-white hover:bg-black/60 transition"
-                    aria-label="Remove photo"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                      <path d="M18 6L6 18M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              ) : (
+
+              {/* Tab switcher */}
+              <div className="flex gap-1 mb-3 bg-gray-100 p-1 rounded-2xl w-fit">
                 <button
                   type="button"
-                  onClick={() => fileRef.current?.click()}
-                  className="w-full h-20 rounded-2xl border-2 border-dashed border-gray-200 flex items-center justify-center gap-2 text-sm text-gray-400 hover:border-gray-300 hover:bg-gray-50 hover:text-gray-500 transition"
+                  onClick={() => setImageTab("upload")}
+                  className={`text-xs font-semibold px-3 py-1.5 rounded-xl transition ${
+                    imageTab === "upload"
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "text-gray-400 hover:text-gray-600"
+                  }`}
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  Add photo
+                  Upload
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setImageTab("url")}
+                  className={`text-xs font-semibold px-3 py-1.5 rounded-xl transition ${
+                    imageTab === "url"
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "text-gray-400 hover:text-gray-600"
+                  }`}
+                >
+                  URL
+                </button>
+              </div>
+
+              {imageTab === "upload" ? (
+                /* File upload */
+                imagePreview && imagePreview.startsWith("data:") ? (
+                  <div className="relative rounded-2xl overflow-hidden">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={imagePreview} alt="preview" className="w-full object-cover max-h-48" />
+                    <button
+                      type="button"
+                      onClick={clearImage}
+                      className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center text-white hover:bg-black/60 transition"
+                      aria-label="Remove photo"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                        <path d="M18 6L6 18M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    className="w-full h-24 rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-1.5 text-gray-400 hover:border-gray-300 hover:bg-gray-50 hover:text-gray-500 transition"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                      <path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    <span className="text-xs font-medium">Choose photo</span>
+                  </button>
+                )
+              ) : (
+                /* URL input */
+                <div className="space-y-2">
+                  <input
+                    type="url"
+                    value={imageUrl}
+                    onChange={handleUrlChange}
+                    onBlur={handleUrlBlur}
+                    placeholder="https://images.unsplash.com/…"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-2.5 text-sm text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-300"
+                  />
+                  {imagePreview && !imagePreview.startsWith("data:") && (
+                    <div className="relative rounded-2xl overflow-hidden">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={imagePreview}
+                        alt="preview"
+                        className="w-full object-cover max-h-48"
+                        onError={() => setImagePreview(null)}
+                      />
+                      <button
+                        type="button"
+                        onClick={clearImage}
+                        className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center text-white hover:bg-black/60 transition"
+                        aria-label="Remove photo"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                          <path d="M18 6L6 18M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
+
+              {/* Hidden file input */}
               <input
                 ref={fileRef}
                 type="file"
                 accept="image/*"
                 className="hidden"
-                onChange={handleImage}
+                onChange={handleFileChange}
               />
             </div>
 
             {/* Submit */}
             <button
               type="submit"
-              disabled={!title.trim()}
-              className="w-full bg-gray-900 text-white text-sm font-semibold py-3 rounded-full hover:bg-gray-700 active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed mt-2"
+              className="w-full bg-gray-900 text-white text-sm font-semibold py-3 rounded-2xl hover:bg-gray-700 active:scale-[0.98] transition mt-2"
             >
-              Save Activity
+              {isEdit ? "Save Changes" : "Add to Itinerary"}
             </button>
           </form>
         </div>

@@ -102,6 +102,8 @@ export default function TripTimeline({ tripId }: Props) {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [addForDate, setAddForDate] = useState<string | null>(null);
+  // null = add mode; Activity = edit mode
+  const [editActivity, setEditActivity] = useState<Activity | null>(null);
 
   // ── load trip + activities ──────────────────────────────────────────────────
   useEffect(() => {
@@ -131,22 +133,39 @@ export default function TripTimeline({ tripId }: Props) {
         await saveData(activitiesKey(tripId), updated);
       } catch (err) {
         console.error("Failed to save activities:", err);
-        // revert already handled by caller keeping prev state if needed
       }
     },
     [tripId]
   );
 
-  function handleAddActivity(act: Activity) {
-    const updated = [...activities, act];
-    persistActivities(updated);
+  function closeModal() {
     setModalOpen(false);
     setAddForDate(null);
+    setEditActivity(null);
+  }
+
+  /** Called by modal for both add and edit */
+  function handleSaveActivity(act: Activity) {
+    let updated: Activity[];
+    if (editActivity) {
+      // Replace existing activity (may have moved to a different day)
+      updated = activities.map((a) => (a.id === act.id ? act : a));
+    } else {
+      updated = [...activities, act];
+    }
+    persistActivities(updated);
+    closeModal();
   }
 
   function handleDeleteActivity(id: string) {
     const updated = activities.filter((a) => a.id !== id);
     persistActivities(updated);
+  }
+
+  function openEditModal(activity: Activity) {
+    setEditActivity(activity);
+    setAddForDate(null);
+    setModalOpen(true);
   }
 
   // ── derived ─────────────────────────────────────────────────────────────────
@@ -250,10 +269,12 @@ export default function TripTimeline({ tripId }: Props) {
               date={date}
               activities={dayActivities}
               onAddActivity={() => {
+                setEditActivity(null);
                 setAddForDate(date);
                 setModalOpen(true);
               }}
               onDeleteActivity={handleDeleteActivity}
+              onEditActivity={openEditModal}
               fmt12h={fmt12h}
             />
           );
@@ -265,6 +286,7 @@ export default function TripTimeline({ tripId }: Props) {
         <div className="flex justify-end pointer-events-auto">
           <button
             onClick={() => {
+              setEditActivity(null);
               setAddForDate(null);
               setModalOpen(true);
             }}
@@ -278,17 +300,15 @@ export default function TripTimeline({ tripId }: Props) {
         </div>
       </div>
 
-      {/* ── Add Activity Modal ────────────────────────────────────────────────── */}
+      {/* ── Add / Edit Activity Modal ─────────────────────────────────────────── */}
       {modalOpen && (
         <AddActivityModal
           tripId={tripId}
           trip={trip}
           defaultDate={addForDate}
-          onClose={() => {
-            setModalOpen(false);
-            setAddForDate(null);
-          }}
-          onSave={handleAddActivity}
+          editActivity={editActivity}
+          onClose={closeModal}
+          onSave={handleSaveActivity}
         />
       )}
     </div>
@@ -303,6 +323,7 @@ interface DaySectionProps {
   activities: Activity[];
   onAddActivity: () => void;
   onDeleteActivity: (id: string) => void;
+  onEditActivity: (activity: Activity) => void;
   fmt12h: (time: string) => string;
 }
 
@@ -312,6 +333,7 @@ function DaySection({
   activities,
   onAddActivity,
   onDeleteActivity,
+  onEditActivity,
   fmt12h,
 }: DaySectionProps) {
   const label = fmtDayLabel(date);
@@ -350,6 +372,7 @@ function DaySection({
                 activity={act}
                 fmt12h={fmt12h}
                 onDelete={() => onDeleteActivity(act.id)}
+                onEdit={() => onEditActivity(act)}
               />
             </div>
           ))}
