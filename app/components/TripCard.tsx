@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { Trip } from "@/lib/types";
 
 interface TripCardProps {
@@ -41,13 +42,21 @@ function coverFor(trip: Trip): string {
 }
 
 export default function TripCard({ trip, featured = false, activityCount = 0 }: TripCardProps) {
+  const router = useRouter();
   const dateRange = `${fmtDate(trip.startDate)} – ${fmtDate(trip.endDate)}`;
   const days = dayCount(trip.startDate, trip.endDate);
   const cover = coverFor(trip);
 
+  function navigate() {
+    router.push(`/trips/${trip.id}`);
+  }
+
   if (featured) {
     return (
-      <div className="col-span-2 rounded-3xl overflow-hidden shadow-sm border border-gray-100 cursor-pointer group">
+      <div
+        className="col-span-2 rounded-3xl overflow-hidden shadow-sm border border-gray-100 cursor-pointer group"
+        onClick={navigate}
+      >
         <div className="relative h-52">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -75,7 +84,10 @@ export default function TripCard({ trip, featured = false, activityCount = 0 }: 
   }
 
   return (
-    <div className="rounded-3xl overflow-hidden shadow-sm border border-gray-100 cursor-pointer group">
+    <div
+      className="rounded-3xl overflow-hidden shadow-sm border border-gray-100 cursor-pointer group"
+      onClick={navigate}
+    >
       <div className="relative h-40">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img

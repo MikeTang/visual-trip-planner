@@ -7,3 +7,15 @@ export interface Trip {
   coverImage?: string;
   createdAt: string; // ISO timestamp
 }
+
+export interface Activity {
+  id: string;
+  tripId: string;
+  date: string;   // "YYYY-MM-DD" — which day this belongs to
+  time: string;   // "HH:MM" 24h
+  title: string;
+  notes?: string;
+  cost?: number;  // USD
+  image?: string; // URL or data URI
+  createdAt: string;
+}
