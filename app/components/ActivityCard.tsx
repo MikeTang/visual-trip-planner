@@ -7,9 +7,10 @@ interface Props {
   activity: Activity;
   fmt12h: (time: string) => string;
   onDelete: () => void;
+  onEdit: () => void;
 }
 
-export default function ActivityCard({ activity, fmt12h, onDelete }: Props) {
+export default function ActivityCard({ activity, fmt12h, onDelete, onEdit }: Props) {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   return (
@@ -46,18 +47,34 @@ export default function ActivityCard({ activity, fmt12h, onDelete }: Props) {
         )}
       </div>
 
-      {/* Delete button — appears on hover */}
-      {!confirmDelete ? (
-        <button
-          onClick={() => setConfirmDelete(true)}
-          className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition hover:bg-black/50"
-          aria-label="Delete activity"
-        >
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
-        </button>
-      ) : (
+      {/* Action buttons — appear on hover */}
+      {!confirmDelete && (
+        <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+          {/* Edit */}
+          <button
+            onClick={onEdit}
+            className="w-6 h-6 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center text-white hover:bg-black/50 transition"
+            aria-label="Edit activity"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+              <path d="M15.232 5.232l3.536 3.536M9 13l6.293-6.293a1 1 0 011.414 0l1.586 1.586a1 1 0 010 1.414L12 16H9v-3z" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          {/* Delete */}
+          <button
+            onClick={() => setConfirmDelete(true)}
+            className="w-6 h-6 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center text-white hover:bg-black/50 transition"
+            aria-label="Delete activity"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {/* Delete confirmation overlay */}
+      {confirmDelete && (
         <div className="absolute inset-0 bg-white/90 backdrop-blur-sm rounded-3xl flex flex-col items-center justify-center gap-2 p-3">
           <p className="text-xs font-semibold text-gray-700 text-center">Remove this activity?</p>
           <div className="flex gap-2">
